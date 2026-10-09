@@ -528,6 +528,18 @@ function showLogin() {
     return;
   }
   if (!L.rider) {
+    // The roster can change in Asana while the app is open, so the name list
+    // always re-checks it, quietly, and redraws if anyone was added or removed.
+    if (!L.fetching && Date.now() - S.loadedAt > 5000) {
+      L.fetching = true;
+      api().then(function (d) {
+        L.fetching = false;
+        if (d.error) return;
+        var before = S.data.riders.map(function (r) { return r.gid + r.hasPin; }).join();
+        S.data = d; S.loadedAt = Date.now();
+        if (!S.me && !L.rider && d.riders.map(function (r) { return r.gid + r.hasPin; }).join() !== before) showLogin();
+      }).catch(function () { L.fetching = false; });
+    }
     $('login').innerHTML = '<div class="wrap"><img class="logo" src="/img/logo.png" alt="Next Level BMX">' +
       '<div class="h1">Who’s training?</div><p class="sub">' + esc(SEASON.label) + '</p>' +
       '<div class="names">' + S.data.riders.map(function (r) {
@@ -876,6 +888,9 @@ function enterCircuit(ci) {
   var c = list[ci];
   if (c.timed) {
     go('ivlsetup', { ci: ci, ivl: { rounds: c.hi, legs: c.moves.map(function (m) { return { name: m.name, seconds: m.spec.seconds }; }), between: c.between } });
+  } else if (R.s.cat === 'track') {
+    // Track sets are one checklist screen: pick the laps, tick them off, move on.
+    go('laps', { ci: ci, rounds: c.hi, lapRest: null });
   } else if (c.hi === 1) {
     go('set', { ci: ci, rounds: 1, r: 0, m: 0 });   // one round: nothing to set up
   } else {
@@ -1038,6 +1053,7 @@ function paint() {
   if (p === 'start') h = paintStart();
   else if (p === 'prep' || p === 'cool') h = paintChecklist(p);
   else if (p === 'intro') h = paintIntro();
+  else if (p === 'laps') h = paintLaps();
   else if (p === 'set') h = paintSet();
   else if (p === 'rest') h = paintRest();
   else if (p === 'ivlsetup') h = paintIvlSetup();
@@ -1085,6 +1101,83 @@ function paintChecklist(kind) {
       return '<button class="wor-check' + (on ? ' on' : '') + '" onclick="R.checks[\'' + k + '\']=!R.checks[\'' + k + '\'];paint()"><i>&#10003;</i>' + esc(w) + '</button>';
     }).join('') +
     '<button class="btn go" onclick="' + (kind === 'prep' ? 'enterCircuit(0)' : 'finish()') + '">' + esc(nextLabel) + '</button></div>';
+}
+
+// ── Track: one screen per set ─────────────────────────────────────────
+// One box per lap. With two or more different sections in one set (T4's
+// speed sections) each section gets its own box, once per round.
+function lapItems(c, rounds) {
+  var out = [], word = c.word || 'Lap';
+  for (var r = 0; r < rounds; r++) {
+    c.moves.forEach(function (m) {
+      var label = c.moves.length > 1 ? m.name : word + ' ' + (r + 1);
+      if (c.moves.length > 1 && rounds > 1) label = word + ' ' + (r + 1) + ': ' + m.name;
+      out.push(label);
+    });
+  }
+  return out;
+}
+function lapKey(i) { return 'lap' + R.ci + '_' + i; }
+function lapToggle(i) {
+  var k = lapKey(i), c = circuits()[R.ci];
+  R.checks[k] = !R.checks[k];
+  var total = lapItems(c, R.rounds).length;
+  var done = 0; for (var j = 0; j < total; j++) if (R.checks[lapKey(j)]) done++;
+  stopTimers(); beepsStop();
+  // Ticking a lap starts the rest before the next one, if the plan has one.
+  if (R.checks[k] && c.between > 0 && done < total) {
+    R.lapRest = { at: Date.now(), seconds: c.between };
+    scheduleBeeps([c.between]);
+    T.id = setInterval(function () {
+      var n = left(R.lapRest.at, R.lapRest.seconds), el = $('lr-n');
+      if (el) el.textContent = clock(n);
+      if (n <= 0) { stopTimers(); buzz(); R.lapRest = null; paint(); }
+    }, 250);
+  } else {
+    R.lapRest = null;
+  }
+  paint();
+}
+function lapRounds(d) {
+  R.rounds = Math.max(1, Math.min(30, R.rounds + d));
+  paint();
+}
+function lapsDone() {
+  var c = circuits()[R.ci], total = lapItems(c, R.rounds).length;
+  for (var j = 0; j < total; j++) if (R.checks[lapKey(j)]) R.moves++;
+  stopTimers(); beepsStop(); R.lapRest = null;
+  afterCircuit();
+}
+function nextLabel() {
+  var list = circuits();
+  if (R.ci + 1 < list.length) return 'Next: ' + list[R.ci + 1].label;
+  return R.s.cooldown.length ? 'Cool down' : 'Finish session';
+}
+function paintLaps() {
+  var c = circuits()[R.ci], items = lapItems(c, R.rounds), word = c.word || 'Lap';
+  var done = items.filter(function (_, i) { return R.checks[lapKey(i)]; }).length;
+  var form = c.moves.length === 1 ? c.moves[0].form : '';
+  var h = topBar('Set ' + (R.ci + 1) + ' of ' + circuits().length, done + ' of ' + items.length + ' done') +
+    '<div class="wor-scr"><div><div class="wor-name">' + esc(c.label) + '</div>' +
+    (form ? '<p class="wor-form" style="margin-top:8px">' + esc(form) + '</p>' : '') + '</div>';
+  if (c.moves.length === 1 || c.hi > 1) {
+    h += '<div class="wor-pads"><div class="wor-pad"><div class="wor-pad-l">' + esc(plural(word, 2)) +
+      '<br><small style="font-family:var(--sans);letter-spacing:0;text-transform:none;font-weight:500;color:var(--ink-light)">Recommended ' + esc(c.roundsText) + '</small></div>' +
+      '<div class="wor-row"><button class="wor-stp" onclick="lapRounds(-1)">&minus;</button><div class="wor-num">' + R.rounds + '</div><button class="wor-stp" onclick="lapRounds(1)">+</button></div></div></div>';
+  }
+  h += items.map(function (label, i) {
+    var on = R.checks[lapKey(i)];
+    return '<button class="wor-check' + (on ? ' on' : '') + '" onclick="lapToggle(' + i + ')"><i>&#10003;</i>' + esc(label) + '</button>';
+  }).join('');
+  if (R.lapRest) {
+    h += '<div class="wor-timer run" style="border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft)"><div class="wor-k" style="margin:0">Rest before your next ' + esc(word.toLowerCase()) + '</div>' +
+      '<div class="big" id="lr-n" style="color:var(--orange)">' + clock(left(R.lapRest.at, R.lapRest.seconds)) + '</div>' +
+      '<button class="link quiet" onclick="stopTimers();beepsStop();R.lapRest=null;paint()">Skip rest</button></div>';
+  } else if (c.betweenText) {
+    h += '<p class="muted" style="text-align:center">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(word, 2).toLowerCase()) + '. Tick a box and the rest timer starts.</p>';
+  }
+  h += '<button class="btn go" onclick="lapsDone()">' + esc(nextLabel()) + '</button></div>';
+  return h;
 }
 
 function paintIntro() {

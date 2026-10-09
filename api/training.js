@@ -105,7 +105,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET') {
       // The CDN holds it for 15 seconds, so twenty riders opening the app at
       // practice is one trip to Asana, not twenty.
-      res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
+      res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=20');
       return res.end(JSON.stringify(await bootstrap()));
     }
     if (req.method !== 'POST') { res.statusCode = 405; return res.end('{}'); }
