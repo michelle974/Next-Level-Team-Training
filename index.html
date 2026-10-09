@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#0a0a0a">
 <title>Next Level BMX Training</title>
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon-orange.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Saira+Condensed:wght@600;700;800;900&display=swap" rel="stylesheet">
@@ -263,6 +263,8 @@ button{font-family:var(--sans);cursor:pointer;border:none;background:none;color:
 .wor-run.go .lab{color:var(--green-dk)}
 .wor-run.rest .lab{color:var(--orange)}
 .wor-run.rest .big{color:var(--orange)}
+.wor-run.lead .lab{color:var(--orange);font-size:24px;max-width:16ch}
+.wor-run.lead .big{font-size:180px}
 .wor-run h3{font-family:var(--disp);font-weight:800;font-size:28px;text-transform:uppercase;margin-top:6px}
 .wor-run p{color:var(--ink-light);font-size:15px}
 .wor-run .adj{display:flex;gap:10px;margin-top:6px}
@@ -317,7 +319,9 @@ button{font-family:var(--sans);cursor:pointer;border:none;background:none;color:
 //  "STATE SEASON SESSIONS"; edit them in Asana, no redeploy.
 // ════════════════════════════════════════════════════════════════════
 
-var SEASON = { label: 'State Season 2026-27', start: '2026-10-01', end: '2027-05-31', summerFrom: '2026-05-01' };
+// Practice week Oct 5-11 works like any week but counts toward nothing season-long.
+// Official counting starts Monday Oct 12.
+var SEASON = { label: 'State Season 2026-27', practice: '2026-10-05', start: '2026-10-12', end: '2027-05-31', summerFrom: '2026-05-01' };
 var CATS = {
   track:    { name: 'Track',    code: 'T', color: 'var(--c-track)' },
   sprint:   { name: 'Sprint',   code: 'S', color: 'var(--c-sprint)' },
@@ -364,6 +368,8 @@ function counts(logs) { return logs.filter(function (x) { return x.type !== 'res
 function inWeek(logs, mon) { var sun = addDays(mon, 6); return logs.filter(function (x) { return x.date >= mon && x.date <= sun; }); }
 function badgeFor(n) { return n >= 5 ? 'rock' : n >= 3 ? 'fire' : ''; }
 var SEASON_WEEK1 = mondayOf(SEASON.start);
+var PRACTICE_WEEK = mondayOf(SEASON.practice);
+function isPractice(mon) { return mon >= PRACTICE_WEEK && mon < SEASON_WEEK1; }
 
 // ── Sessions: the same block format the WBD workouts use ──────────────
 // KEY: value lines; blocks separated by a line of ---.
@@ -620,9 +626,11 @@ function viewHome() {
   var logs = riderLogs(r), mon = mondayOf(today());
   var wk = counts(inWeek(logs, mon));
   var seasonLogs = logs.filter(function (x) { return x.date >= SEASON_WEEK1; });
-  var h = '<div class="hero"><div class="eyebrow">' + esc(SEASON.label) + '</div>' +
+  var practice = isPractice(mon);
+  var h = '<div class="hero"><div class="eyebrow">' + (practice ? 'Practice week' : esc(SEASON.label)) + '</div>' +
     '<div class="h1">Let’s go, <span>' + esc(r.name) + '</span></div>' +
-    '<p class="muted">' + (wk ? wk + ' session' + (wk === 1 ? '' : 's') + ' this week. ' : 'Nothing logged yet this week. ') + counts(seasonLogs) + ' this season.</p></div>';
+    '<p class="muted">' + (wk ? wk + ' session' + (wk === 1 ? '' : 's') + ' this week. ' : 'Nothing logged yet this week. ') +
+    (practice ? 'Try it out! Official counting starts Monday, Oct 12.' : counts(seasonLogs) + ' this season.') + '</p></div>';
 
   h += '<div class="card"><div class="card-hd"><div class="h2">This Week</div><span>Tap a day to log or fix it</span></div>' +
     '<div class="week">' + weekGrid(logs, mon) + '</div>' +
@@ -637,15 +645,16 @@ function viewHome() {
 
   // Season so far, most recent week on top.
   var weeks = [];
-  for (var w = addDays(mon, -7); w >= SEASON_WEEK1; w = addDays(w, -7)) weeks.push(w);
-  h += '<div class="card"><div class="card-hd"><div class="h2">Season So Far</div><span>' + weeks.length + ' week' + (weeks.length === 1 ? '' : 's') + ' done</span></div>';
+  for (var w = addDays(mon, -7); w >= PRACTICE_WEEK; w = addDays(w, -7)) weeks.push(w);
+  var done = weeks.filter(function (x) { return x >= SEASON_WEEK1; }).length;
+  h += '<div class="card"><div class="card-hd"><div class="h2">Season So Far</div><span>' + (practice ? 'Starts Oct 12' : done + ' week' + (done === 1 ? '' : 's') + ' done') + '</span></div>';
   h += weeks.length ? weekRows(logs, weeks) : '<p class="muted">Your finished weeks show up here, newest on top.</p>';
   h += '</div>';
 
   // Summer archive, folded away.
   var sw = [], first = mondayOf(SEASON.summerFrom);
-  for (var x = addDays(SEASON_WEEK1, -7); x >= first; x = addDays(x, -7)) sw.push(x);
-  var summer = logs.filter(function (l) { return l.date < SEASON_WEEK1; });
+  for (var x = addDays(PRACTICE_WEEK, -7); x >= first; x = addDays(x, -7)) sw.push(x);
+  var summer = logs.filter(function (l) { return l.date < PRACTICE_WEEK; });
   if (summer.length) {
     var fires = 0, rocks = 0;
     sw.forEach(function (m) { var n = counts(inWeek(logs, m)); if (n >= 5) rocks++; else if (n >= 3) fires++; });
@@ -659,7 +668,7 @@ function viewHome() {
 function weekRows(logs, weeks) {
   return '<div class="wrows">' + weeks.map(function (m) {
     var n = counts(inWeek(logs, m)), b = badgeFor(n);
-    return '<div class="wrow"><div class="lab">' + shortDate(m) + '</div><div class="mini">' + weekGrid(logs, m, true) + '</div>' +
+    return '<div class="wrow"><div class="lab">' + (isPractice(m) ? 'Practice' : shortDate(m)) + '</div><div class="mini">' + weekGrid(logs, m, true) + '</div>' +
       '<div class="tag">' + (b === 'rock' ? '&#9889;' : b === 'fire' ? '&#128293;' : '') + n + '</div></div>';
   }).join('') + '</div>';
 }
@@ -704,19 +713,21 @@ function viewBoard() {
     return { r: r, wk: wk.length, first: first, season: counts(logs.filter(function (x) { return x.date >= SEASON_WEEK1; })), fires: fires, rocks: rocks };
   });
   rows.sort(function (a, b) { return b.wk - a.wk || (a.first < b.first ? -1 : a.first > b.first ? 1 : 0) || b.season - a.season || a.r.name.localeCompare(b.r.name); });
-  var h = '<div class="eyebrow">Week of ' + shortDate(mon) + '</div><div class="h1">Leaderboard</div>' +
-    '<p class="muted" style="margin-top:6px">Resets every Monday. 3 sessions = On Fire. 5+ = Rockstar. Ties go to whoever got started first.</p>';
+  var practice = isPractice(mon);
+  var h = '<div class="eyebrow">' + (practice ? 'Practice week' : 'Week of ' + shortDate(mon)) + '</div><div class="h1">Leaderboard</div>' +
+    '<p class="muted" style="margin-top:6px">' + (practice ? 'Just for fun this week. The real board starts Monday, Oct 12. ' : '') +
+    'Resets every Monday. 3 sessions = On Fire. 5+ = Rockstar. Ties go to whoever got started first.</p>';
   h += '<div class="card"><div class="lb">' + rows.map(function (x, i) {
     var b = badgeFor(x.wk);
     return '<div class="lb-row' + (x.r.gid === S.me.gid ? ' me' : '') + '"><div class="lb-rk">' + (i + 1) + '</div>' +
       '<div class="lb-nm">' + esc(x.r.name) + (b === 'rock' ? '<span class="lb-tag rock">&#9889; Rockstar</span>' : b === 'fire' ? '<span class="lb-tag fire">&#128293; On Fire</span>' : '') + '</div>' +
-      '<div class="lb-n"><b>' + x.wk + '</b><span>' + x.season + ' season</span></div></div>';
+      '<div class="lb-n"><b>' + x.wk + '</b><span>' + (practice ? 'this week' : x.season + ' season') + '</span></div></div>';
   }).join('') + '</div></div>';
   var hof = rows.filter(function (x) { return x.fires + x.rocks > 0; }).sort(function (a, b) { return (b.rocks * 2 + b.fires) - (a.rocks * 2 + a.fires) || a.r.name.localeCompare(b.r.name); });
   h += '<div class="card"><div class="card-hd"><div class="h2">Hall of Fame</div><span>Weeks earned this season</span></div>' +
     (hof.length ? '<div class="hof">' + hof.map(function (x) {
       return '<div class="hof-c"><b>' + esc(x.r.name) + '</b><span class="f">&#128293; ' + x.fires + ' On Fire</span><span class="r">&#9889; ' + x.rocks + ' Rockstar</span></div>';
-    }).join('') + '</div>' : '<p class="muted">First one to 3 sessions in a week gets on the wall.</p>') + '</div>';
+    }).join('') + '</div>' : '<p class="muted">' + (practice ? 'Opens Monday, Oct 12. ' : '') + 'First one to 3 sessions in a week gets on the wall.</p>') + '</div>';
   return h;
 }
 
@@ -912,12 +923,14 @@ function restAdjust(d) {
 function moveTimer() {
   var mv = circuits()[R.ci].moves[R.m];
   if (R.mt && R.mt.running) return;
-  R.mt = { key: R.mt && R.mt.key, running: true, at: Date.now(), seconds: mv.spec.seconds };
-  scheduleBeeps([mv.spec.seconds]);
+  R.mt = { key: R.mt && R.mt.key, running: true, at: Date.now() + LEAD_IN * 1000, seconds: mv.spec.seconds };
+  scheduleBeeps([LEAD_IN, mv.spec.seconds], true);
   paint();
   T.id = setInterval(function () {
-    var n = left(R.mt.at, R.mt.seconds), el = $('mt-n');
-    if (el) el.textContent = clock(n);
+    var n = left(R.mt.at, R.mt.seconds), el = $('mt-n'), lab = $('mt-l');
+    var wait = Math.ceil((R.mt.at - Date.now()) / 1000);
+    if (el) el.textContent = wait > 0 ? String(wait) : clock(n);
+    if (lab) lab.textContent = wait > 0 ? 'Get ready' : 'Go!';
     if (n <= 0) { stopTimers(); buzz(); R.mt = { key: R.mt.key, running: false, done: true }; paint(); }
   }, 250);
 }
@@ -939,11 +952,13 @@ function ivlAdj(i, d) {
   paint();
 }
 function stepFor(sec) { return sec >= 60 ? 15 : 5; }
+var LEAD_IN = 5;   // seconds of "get ready" before the first leg of a timed block
 function ivlGo() {
   R.plan = ivlPlan(); if (!R.plan.length) return;
+  R.plan.unshift({ name: R.plan[0].name, seconds: LEAD_IN, round: 0, lead: true });
   go('ivlrun', { pi: 0, legAt: Date.now() });
   awake(true);
-  scheduleBeeps(R.plan.map(function (p) { return p.seconds; }));
+  scheduleBeeps(R.plan.map(function (p) { return p.seconds; }), true);
   T.id = setInterval(ivlTick, 250);
 }
 function ivlTick() {
@@ -951,7 +966,7 @@ function ivlTick() {
   if (!step) { stopTimers(); ivlEnd(); return; }
   var n = left(R.legAt, step.seconds);
   if (n <= 0) { buzz(); R.pi++; R.legAt += step.seconds * 1000; if (!R.plan[R.pi]) { stopTimers(); ivlEnd(); return; } paintIvl(); return; }
-  var el = $('ivl-n'); if (el) el.textContent = clock(n);
+  var el = $('ivl-n'); if (el) el.textContent = step.lead ? String(n) : clock(n);
 }
 function ivlSkip() {
   beepsStop(); R.pi++; R.legAt = Date.now();
@@ -1081,7 +1096,9 @@ function paintSet() {
   if (mv.reps) h += '<div class="wor-aim"><small>Aim for</small><b>' + esc(mv.reps) + '</b></div>';
   if (mv.spec.timed) {
     var run = R.mt.running;
-    h += '<div class="wor-timer' + (run ? ' run' : '') + '"><div class="big" id="mt-n">' + clock(run ? left(R.mt.at, R.mt.seconds) : mv.spec.seconds) + '</div>' +
+    var waitNow = run ? Math.ceil((R.mt.at - Date.now()) / 1000) : 0;
+    h += '<div class="wor-timer' + (run ? ' run' : '') + '">' + (run ? '<div class="wor-k" id="mt-l" style="margin:0">' + (waitNow > 0 ? 'Get ready' : 'Go!') + '</div>' : '') +
+      '<div class="big" id="mt-n">' + (waitNow > 0 ? waitNow : clock(run ? left(R.mt.at, R.mt.seconds) : mv.spec.seconds)) + '</div>' +
       (run ? '<button class="link quiet" onclick="stopTimers();beepsStop();R.mt={key:R.mt.key};paint()">Stop timer</button>'
            : '<button class="btn orange" onclick="moveTimer()">' + (R.mt.done ? 'Again' + (mv.spec.perSide ? ', other side' : '') : 'Start timer') + '</button>') + '</div>';
   }
@@ -1119,6 +1136,15 @@ function paintIvlSetup() {
 function paintIvl() {
   var c = circuits()[R.ci], step = R.plan[R.pi], next = R.plan[R.pi + 1];
   var rounds = R.ivl.rounds;
+  if (step.lead) {
+    $('runner').innerHTML = topBar(c.label, 'Get ready', cueDots(rounds, -1)) +
+      '<div class="wor-run full lead"><div class="lab">Start your first ' + esc(step.name) + ' in</div>' +
+      '<div class="big" id="ivl-n">' + left(R.legAt, step.seconds) + '</div>' +
+      '<h3>' + esc(rounds + ' ' + (rounds === 1 ? 'round' : 'rounds') + ' \u00b7 ' + clock(ivlTotal()) + ' total') + '</h3>' +
+      '<div style="width:100%;margin-top:22px"><button class="btn" onclick="ivlSkip()">Go now</button></div>' +
+      '<button class="link quiet" onclick="endEarly()">End session now</button></div></div>';
+    return;
+  }
   $('runner').innerHTML = topBar(c.label, 'Round ' + (step.round + 1) + ' of ' + rounds, cueDots(rounds, step.round)) +
     '<div class="wor-run full ' + (step.rest ? 'rest' : 'go') + '"><div class="lab">' + esc(step.name) + '</div>' +
     '<div class="big" id="ivl-n">' + clock(left(R.legAt, step.seconds)) + '</div>' +
@@ -1181,7 +1207,7 @@ function beepAt(ac, at, hz, ms, vol) {
   } catch (e) {}
 }
 // Three counting-out pips before each change, a longer one on it, a double at the very end.
-function scheduleBeeps(segs) {
+function scheduleBeeps(segs, leadIn) {
   silentStart();
   audioStart(function (ac) {
     if (!ac) { A.sound = 'off'; return; }
@@ -1189,7 +1215,8 @@ function scheduleBeeps(segs) {
     var at = ac.currentTime + 0.06;
     segs.forEach(function (sec, i) {
       var end = at + Math.max(0, sec);
-      for (var k = 3; k >= 1; k--) if (sec > k) beepAt(ac, end - k, 660, 90, 0.25);
+      var pips = (leadIn && i === 0) ? sec : 3;   // the get-ready count pips every second
+      for (var k = pips; k >= 1; k--) if (sec >= k) beepAt(ac, end - k, 660, 90, 0.25);
       var last = i === segs.length - 1;
       beepAt(ac, end, last ? 520 : 880, last ? 650 : 280, 0.32);
       if (last) beepAt(ac, end + 0.3, 660, 650, 0.32);
