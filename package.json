@@ -1,0 +1,5 @@
+{
+  "name": "next-level-bmx-training",
+  "private": true,
+  "engines": { "node": "22.x" }
+}
