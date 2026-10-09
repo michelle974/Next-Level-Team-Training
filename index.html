@@ -1084,14 +1084,25 @@ function paintStart() {
     var nextC = list[i + 1];
     var rests = c.betweenText ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '</div>' : '';
     var restCard = nextC && c.afterText && c.after > 0 ? restCardHtml(c.afterText, 'before the next set') : '';
+    var one = c.moves.length === 1, mv0 = c.moves[0];
+    var many = esc(c.roundsText) + ' ' + esc(plural(c.word, c.hi).toLowerCase());
     if (s.cat === 'track') {
-      // Track: the title says what to ride, the grey number says how many laps.
-      h += '<div class="wor-circ"><div class="mv" style="padding:0"><h4 style="margin:0">' + esc(c.label) + '</h4><span>' +
-        esc(c.roundsText) + ' ' + esc(plural(c.word, c.hi).toLowerCase()) + '</span></div>' + rests + '</div>' + restCard;
+      // Track: orange title, laps on the right, rest between laps in the card.
+      h += '<div class="wor-circ"><div class="mv" style="padding:0"><h4 style="margin:0">' + esc(c.label) + '</h4><span>' + many + '</span></div>' +
+        rests + '</div>' + restCard;
       return;
     }
-    h += '<div class="wor-circ"><h4>' + esc(c.label) + (c.roundsText !== '1' ? ' &middot; ' + esc(c.roundsText) + ' ' + esc(plural(c.word, c.hi)) : '') + '</h4>' +
-      c.moves.map(function (m) { return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(m.reps) + '</span></div>'; }).join('') + rests + '</div>' + restCard;
+    // Everything else: orange title on its own, the move underneath with how many
+    // on the right (not "1 run"), and every rest in its own orange card.
+    var rows = one
+      ? '<div class="mv"><b>' + esc(mv0.name) + '</b><span>' + (c.roundsText === '1' ? esc(mv0.reps) : many) + '</span></div>'
+      : c.moves.map(function (m) { return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(m.reps) + '</span></div>'; }).join('');
+    var restLines = [];
+    if (c.betweenText) restLines.push(c.betweenText + ' between ' + plural(c.word, 2).toLowerCase());
+    if (nextC && c.afterText && c.after > 0) restLines.push(c.afterText + ' before the next set');
+    h += '<div class="wor-circ"><div class="mv" style="padding:0;margin-bottom:6px"><h4 style="margin:0">' + esc(c.label) + '</h4>' +
+      (!one && c.roundsText !== '1' ? '<span>' + many + '</span>' : '') + '</div>' + rows + '</div>' +
+      (restLines.length ? '<div class="wor-restcard"><b>Rest</b><span>' + restLines.map(esc).join('<br>') + '</span></div>' : '');
   });
   if (s.cooldown.length) h += '<div class="wor-circ"><h4>Cool down</h4>' + s.cooldown.map(splitRow).join('') + '</div>';
   var notes = [['Key focus', s.keyFocus], ['Daily goal', s.dailyGoal], ['Coach note', s.coachNote]].filter(function (x) { return x[1]; });
