@@ -741,8 +741,9 @@ function viewBoard() {
   // Most sessions first, A to Z within a tie. No rank numbers: riders with the
   // same count are equal, and a colored divider marks where the count changes.
   rows.sort(function (a, b) { return b.wk - a.wk || a.r.name.localeCompare(b.r.name); });
-  // A rider joins the board with their first logged session ever, and stays on it.
-  var board = rows.filter(function (x) { return counts(riderLogs(x.r)) > 0; });
+  // A rider joins the board with their first session this season (practice week
+  // counts) and stays on it for the rest of the season. Summer logs do not count.
+  var board = rows.filter(function (x) { return counts(riderLogs(x.r).filter(function (l) { return l.date >= PRACTICE_WEEK; })) > 0; });
   var meHidden = !board.some(function (x) { return x.r.gid === S.me.gid; });
   h += '<div class="card"><div class="lb">' + board.map(function (x, i) {
     var b = badgeFor(x.wk), prev = board[i - 1];
