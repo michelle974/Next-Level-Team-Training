@@ -763,11 +763,22 @@ function paintLog() {
     var c = choices.filter(function (x) { return x.code === LOGF.code; })[0] || { code: LOGF.code, cat: catOfCode(LOGF.code), name: '' };
     h += '<div class="opts"><div class="opt on"><div class="badge ' + (c.cat === 'rest' ? 'other' : c.cat) + '">' + esc(c.code) + '</div><div><b>' + esc(c.name) + '</b><span>' + esc(dayName(LOGF.date) + ' ' + shortDate(LOGF.date)) + '</span></div></div></div>';
   } else {
-    h += '<p class="muted" style="margin-top:14px">Which session?</p><div class="opts">' + choices.map(function (c) {
-      return '<button class="opt' + (LOGF.code === c.code ? ' on' : '') + '" onclick="LOGF.code=\'' + esc(c.code) + '\';paintLog()"><div class="badge ' + (c.cat === 'rest' ? 'other' : c.cat) + '">' + esc(c.code === 'Rest' ? 'R' : c.code) + '</div><div><b>' + esc(c.name) + '</b><span>' + (c.cat === 'rest' ? 'Recovery counts too' : CATS[c.cat].name) + '</span></div></button>';
-    }).join('') + '</div>';
+    // Grouped by type, Track > Sprint > Strength > Roller, each in its Asana order
+    // with its "Other" last, then Rest at the bottom.
+    var optBtn = function (c) {
+      var other = /^O[TSWR]$/.test(c.code);
+      return '<button class="opt' + (LOGF.code === c.code ? ' on' : '') + '" onclick="LOGF.code=\'' + esc(c.code) + '\';paintLog()"><div class="badge ' + (c.cat === 'rest' || other ? 'other' : c.cat) + '">' + esc(c.code === 'Rest' ? 'R' : c.code) + '</div><div><b>' + esc(c.name) + '</b>' + (c.cat === 'rest' ? '<span>Recovery counts too</span>' : other ? '<span>Your own ' + CATS[c.cat].name.toLowerCase() + ' work</span>' : '') + '</div></button>';
+    };
+    h += '<p class="muted" style="margin-top:14px">Which session?</p>';
+    CAT_ORDER.forEach(function (cat) {
+      var group = choices.filter(function (c) { return c.cat === cat; });
+      if (!group.length) return;
+      h += '<div class="cat-h" style="margin-top:18px"><i style="background:' + CATS[cat].color + '"></i><div class="h2">' + CATS[cat].name + '</div></div><div class="opts" style="margin-top:8px">' + group.map(optBtn).join('') + '</div>';
+    });
+    h += '<div class="cat-h" style="margin-top:18px"><i style="background:#fff;border:1.5px solid var(--line-mid)"></i><div class="h2">Rest</div></div><div class="opts" style="margin-top:8px">' +
+      choices.filter(function (c) { return c.cat === 'rest'; }).map(optBtn).join('') + '</div>';
   }
-  h += '<div style="margin-top:16px;position:sticky;bottom:0;background:#fff;padding:8px 0"><button class="btn go" ' + (LOGF.code ? '' : 'disabled') + ' onclick="saveLog()">Log it</button></div>';
+  h += '<div style="margin-top:16px;position:sticky;bottom:calc(-20px - var(--safe-b));background:#fff;padding:10px 0 calc(var(--safe-b) + 24px);box-shadow:0 -8px 12px -6px rgba(0,0,0,.12)"><button class="btn go" ' + (LOGF.code ? '' : 'disabled') + ' onclick="saveLog()">Log it</button></div>';
   var keep = $('sheet').hidden ? 0 : $('sheet').scrollTop;
   openSheet(h); $('sheet').scrollTop = keep;
 }
