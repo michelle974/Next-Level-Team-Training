@@ -66,6 +66,7 @@ button{font-family:var(--sans);cursor:pointer;border:none;background:none;color:
 .btn.orange{background:var(--orange);color:#fff}
 .btn.ghost{background:transparent;border:2px solid var(--black);color:var(--black)}
 .btn[disabled]{opacity:.45}
+.btn.pause{border-color:var(--orange);color:var(--orange-dk);background:#fff}
 .link{background:none;padding:8px 0;font-size:14.5px;font-weight:700;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .link.quiet{color:var(--ink-light);font-weight:500;text-decoration:none}
 
@@ -857,14 +858,14 @@ function openSession(id) {
 }
 function circuits() { return R.s.circuits.filter(function (c) { return !c.option || c.option === R.option; }); }
 function closeRunner() {
-  stopTimers(); beepsStop(); awake(false);
+  stopTimers(); beepsStop(); awake(false); P.on = false;
   R = null; $('runner').hidden = true; document.body.style.overflow = ''; render();
 }
 
 // History, so ‹ goes back a screen the way a rider expects.
 function snapshot() { return JSON.stringify({ phase: R.phase, ci: R.ci, r: R.r, m: R.m, rounds: R.rounds, rest: R.rest, ivl: R.ivl }); }
 function go(phase, patch) {
-  stopTimers(); beepsStop();
+  stopTimers(); beepsStop(); P.on = false;
   R.hist.push(snapshot());
   R.phase = phase;
   for (var k in (patch || {})) R[k] = patch[k];
@@ -872,7 +873,7 @@ function go(phase, patch) {
   var sc = $('runner'); if (sc) sc.scrollTop = 0;
 }
 function back() {
-  stopTimers(); beepsStop();
+  stopTimers(); beepsStop(); P.on = false;
   if (!R.hist.length || R.phase === 'start') { closeRunner(); return; }
   var p = JSON.parse(R.hist.pop());
   for (var k in p) R[k] = p[k];
@@ -931,11 +932,43 @@ function restDone() {
 //    for a moment comes back with the right number on it.
 var T = { id: 0 };
 function stopTimers() { clearInterval(T.id); T.id = 0; }
-function left(at, seconds) { return Math.max(0, Math.round(seconds - (Date.now() - at) / 1000)); }
+// Pause freezes every clock: while paused, "now" stays at the moment Pause was tapped.
+var P = { on: false, at: 0 };
+function nowT() { return P.on ? P.at : Date.now(); }
+function left(at, seconds) { return Math.max(0, Math.round(seconds - (nowT() - at) / 1000)); }
+function pauseBtn() {
+  return '<button class="btn ghost pause" onclick="' + (P.on ? 'resumeTimer()' : 'pauseTimer()') + '">' + (P.on ? '&#9654; Resume' : '&#10074;&#10074; Pause') + '</button>';
+}
+function pauseTimer() {
+  if (P.on) return;
+  stopTimers(); beepsStop();
+  P.on = true; P.at = Date.now();
+  if (R.phase === 'ivlrun') paintIvl(); else paint();
+}
+function resumeTimer() {
+  if (!P.on) return;
+  var shift = Date.now() - P.at;
+  P.on = false;
+  if (R.phase === 'rest' && R.rest) { R.rest.at += shift; paint(); runRest(); return; }
+  if (R.phase === 'ivlrun' && R.plan) {
+    R.legAt += shift;
+    var step = R.plan[R.pi];
+    scheduleBeeps([left(R.legAt, step.seconds)].concat(R.plan.slice(R.pi + 1).map(function (p) { return p.seconds; })), !!step.lead);
+    paintIvl(); T.id = setInterval(ivlTick, 250); return;
+  }
+  if (R.phase === 'set' && R.mt && R.mt.running) {
+    R.mt.at += shift;
+    var wait = Math.ceil((R.mt.at - Date.now()) / 1000);
+    if (wait > 0) scheduleBeeps([wait, R.mt.seconds], true); else scheduleBeeps([left(R.mt.at, R.mt.seconds)]);
+    paint(); mtLoop(); return;
+  }
+  if (R.phase === 'laps' && R.lapRest) { R.lapRest.at += shift; scheduleBeeps([left(R.lapRest.at, R.lapRest.seconds)]); paint(); lapLoop(); return; }
+  paint();
+}
 
 function runRest() {
   var rs = R.rest;
-  scheduleBeeps([rs.seconds - Math.round((Date.now() - rs.at) / 1000)]);
+  scheduleBeeps([left(rs.at, rs.seconds)]);
   stopTimers();
   T.id = setInterval(function () {
     var n = left(rs.at, rs.seconds), el = $('rest-n');
@@ -945,8 +978,9 @@ function runRest() {
 }
 function restAdjust(d) {
   var rs = R.rest; var n = left(rs.at, rs.seconds) + d;
-  if (n <= 0) { beepsStop(); restDone(); return; }
-  rs.at = Date.now(); rs.seconds = n; beepsStop(); runRest(); $('rest-n').textContent = clock(n);
+  if (n <= 0) { beepsStop(); P.on = false; restDone(); return; }
+  rs.at = nowT(); rs.seconds = n; $('rest-n').textContent = clock(n);
+  if (!P.on) { beepsStop(); runRest(); }
 }
 
 // A single timed move inside a mixed circuit: Plank Hold, 20 seconds.
@@ -956,9 +990,13 @@ function moveTimer() {
   R.mt = { key: R.mt && R.mt.key, running: true, at: Date.now() + LEAD_IN * 1000, seconds: mv.spec.seconds };
   scheduleBeeps([LEAD_IN, mv.spec.seconds], true);
   paint();
+  mtLoop();
+}
+function mtLoop() {
+  stopTimers();
   T.id = setInterval(function () {
     var n = left(R.mt.at, R.mt.seconds), el = $('mt-n'), lab = $('mt-l');
-    var wait = Math.ceil((R.mt.at - Date.now()) / 1000);
+    var wait = Math.ceil((R.mt.at - nowT()) / 1000);
     if (el) el.textContent = wait > 0 ? String(wait) : clock(n);
     if (lab) lab.textContent = wait > 0 ? 'Get ready' : 'Go!';
     if (n <= 0) { stopTimers(); buzz(); R.mt = { key: R.mt.key, running: false, done: true }; paint(); }
@@ -999,7 +1037,9 @@ function ivlTick() {
   var el = $('ivl-n'); if (el) el.textContent = step.lead ? String(n) : clock(n);
 }
 function ivlSkip() {
+  var wasPaused = P.on; P.on = false;
   beepsStop(); R.pi++; R.legAt = Date.now();
+  if (wasPaused) { stopTimers(); T.id = setInterval(ivlTick, 250); }
   if (!R.plan[R.pi]) { stopTimers(); ivlEnd(); return; }
   scheduleBeeps(R.plan.slice(R.pi).map(function (p) { return p.seconds; }));
   paintIvl();
@@ -1155,17 +1195,22 @@ function lapToggle(i) {
   stopTimers(); beepsStop();
   // Ticking a lap starts the rest before the next one, if the plan has one.
   if (R.checks[k] && c.between > 0 && done < total) {
+    P.on = false;
     R.lapRest = { at: Date.now(), seconds: c.between };
     scheduleBeeps([c.between]);
-    T.id = setInterval(function () {
-      var n = left(R.lapRest.at, R.lapRest.seconds), el = $('lr-n');
-      if (el) el.textContent = clock(n);
-      if (n <= 0) { stopTimers(); buzz(); R.lapRest = null; paint(); }
-    }, 250);
+    lapLoop();
   } else {
-    R.lapRest = null;
+    R.lapRest = null; P.on = false;
   }
   paint();
+}
+function lapLoop() {
+  stopTimers();
+  T.id = setInterval(function () {
+    var n = left(R.lapRest.at, R.lapRest.seconds), el = $('lr-n');
+    if (el) el.textContent = clock(n);
+    if (n <= 0) { stopTimers(); buzz(); R.lapRest = null; paint(); }
+  }, 250);
 }
 function lapRounds(d) {
   R.rounds = Math.max(1, Math.min(30, R.rounds + d));
@@ -1201,7 +1246,7 @@ function paintLaps() {
   if (R.lapRest) {
     h += '<div class="wor-timer run" style="border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft)"><div class="wor-k" style="margin:0">Rest before your next ' + esc(word.toLowerCase()) + '</div>' +
       '<div class="big" id="lr-n" style="color:var(--orange)">' + clock(left(R.lapRest.at, R.lapRest.seconds)) + '</div>' +
-      '<button class="link quiet" onclick="stopTimers();beepsStop();R.lapRest=null;paint()">Skip rest</button></div>';
+      '<div style="width:100%">' + pauseBtn() + '</div><button class="link quiet" onclick="stopTimers();beepsStop();P.on=false;R.lapRest=null;paint()">Skip rest</button></div>';
   } else if (c.betweenText) {
     h += '<p class="muted" style="text-align:center">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(word, 2).toLowerCase()) + '. Tick a box and the rest timer starts.</p>';
   }
@@ -1239,16 +1284,16 @@ function paintSet() {
   } else if (mv.reps) h += '<div class="wor-aim"><small>Aim for</small><b>' + esc(mv.reps) + '</b></div>';
   if (mv.spec.timed) {
     var run = R.mt.running;
-    var waitNow = run ? Math.ceil((R.mt.at - Date.now()) / 1000) : 0;
+    var waitNow = run ? Math.ceil((R.mt.at - nowT()) / 1000) : 0;
     h += '<div class="wor-timer' + (run ? ' run' : '') + '">' + (run ? '<div class="wor-k" id="mt-l" style="margin:0">' + (waitNow > 0 ? 'Get ready' : 'Go!') + '</div>' : '') +
       '<div class="big" id="mt-n">' + (waitNow > 0 ? waitNow : clock(run ? left(R.mt.at, R.mt.seconds) : mv.spec.seconds)) + '</div>' +
-      (run ? '<button class="link quiet" onclick="stopTimers();beepsStop();R.mt={key:R.mt.key};paint()">Stop timer</button>'
+      (run ? '<div style="width:100%">' + pauseBtn() + '</div><button class="link quiet" onclick="stopTimers();beepsStop();P.on=false;R.mt={key:R.mt.key};paint()">Stop timer</button>'
            : '<button class="btn orange" onclick="moveTimer()">' + (R.mt.done ? 'Again' + (mv.spec.perSide ? ', other side' : '') : 'Start timer') + '</button>') + '</div>';
   }
   if (mv.form) h += '<p class="wor-form">' + esc(mv.form) + '</p>';
   var endOfRound = R.m + 1 >= c.moves.length;
   var restNext = endOfRound && ((R.r + 1 < R.rounds && c.between > 0) || (R.r + 1 >= R.rounds && c.after > 0 && R.ci + 1 < circuits().length));
-  h += '<button class="btn go" onclick="stopTimers();beepsStop();nextSet()">' + (restNext ? 'Start rest timer' : 'Done, next') + '</button>' +
+  h += '<button class="btn go" onclick="stopTimers();beepsStop();nextSet()">' + (restNext ? 'Done, start rest timer' : 'Done, next') + '</button>' +
     '<div class="wor-foot">' + (mv.video ? '<a class="wor-link" href="' + esc(mv.video) + '" target="_blank" rel="noopener">How to do it</a>' : '<span></span>') +
     '<button class="link quiet" onclick="stopTimers();beepsStop();nextSet(true)">Skip this move</button></div></div>';
   return h;
@@ -1259,8 +1304,10 @@ function paintRest() {
   return topBar('Rest', rs.next || '') +
     '<div class="wor-run rest full"><div class="lab">Rest</div><div class="big" id="rest-n">' + clock(left(rs.at, rs.seconds)) + '</div>' +
     '<h3>' + esc(rs.next || '') + '</h3>' +
+    (P.on ? '<p style="font-weight:800;color:var(--orange)">PAUSED</p>' : '') +
     '<div class="adj"><button onclick="restAdjust(-15)">&minus;15 sec</button><button onclick="restAdjust(15)">+15 sec</button></div>' +
-    '<div style="width:100%;margin-top:22px"><button class="btn" onclick="beepsStop();stopTimers();restDone()">Skip rest</button></div></div>';
+    '<div style="width:100%;margin-top:22px;display:flex;flex-direction:column;gap:10px">' + pauseBtn() +
+    '<button class="btn" onclick="beepsStop();stopTimers();P.on=false;restDone()">Skip rest</button></div></div>';
 }
 
 function paintIvlSetup() {
@@ -1286,7 +1333,7 @@ function paintIvl() {
       '<div class="wor-run full lead"><div class="lab">Start your first ' + esc(step.name) + ' in</div>' +
       '<div class="big" id="ivl-n">' + left(R.legAt, step.seconds) + '</div>' +
       '<h3>' + esc(rounds + ' ' + (rounds === 1 ? 'round' : 'rounds') + ' \u00b7 ' + clock(ivlTotal()) + ' total') + '</h3>' +
-      '<div style="width:100%;margin-top:22px"><button class="btn" onclick="ivlSkip()">Go now</button></div>' +
+      '<div style="width:100%;margin-top:22px;display:flex;flex-direction:column;gap:10px">' + pauseBtn() + '<button class="btn" onclick="ivlSkip()">Go now</button></div>' +
       '<button class="link quiet" onclick="endEarly()">End session now</button></div></div>';
     return;
   }
@@ -1295,7 +1342,8 @@ function paintIvl() {
     '<div class="big" id="ivl-n">' + clock(left(R.legAt, step.seconds)) + '</div>' +
     '<h3>' + esc(next ? 'Then ' + next.name : 'Last one') + '</h3>' +
     '<p>' + esc(next ? clock(next.seconds) + ' of it' : 'Finish strong') + '</p>' +
-    '<div style="width:100%;margin-top:22px"><button class="btn" onclick="ivlSkip()">Stop this one, go to the next</button></div>' +
+    (P.on ? '<p style="font-weight:800;color:var(--orange)">PAUSED</p>' : '') +
+    '<div style="width:100%;margin-top:22px;display:flex;flex-direction:column;gap:10px">' + pauseBtn() + '<button class="btn" onclick="ivlSkip()">Stop this one, go to the next</button></div>' +
     '<button class="link quiet" onclick="endEarly()">End session now</button></div></div>';
 }
 function paintDone() {
