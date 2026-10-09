@@ -1082,14 +1082,15 @@ function paintStart() {
   if (s.warmup.length) h += '<div class="wor-circ"><h4>Warm up</h4>' + s.warmup.map(splitRow).join('') + '</div>';
   list.forEach(function (c, i) {
     var nextC = list[i + 1];
-    var rests = c.betweenText ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '</div>' : '';
-    var restCard = nextC && c.afterText && c.after > 0 ? restCardHtml(c.afterText, 'before the next set') : '';
     var one = c.moves.length === 1, mv0 = c.moves[0];
     var many = esc(c.roundsText) + ' ' + esc(plural(c.word, c.hi).toLowerCase());
+    // Rest between laps or sprints belongs to the set, so it sits inside the card.
+    // Rest between sets gets its own orange card.
+    var rests = c.betweenText ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '</div>' : '';
+    var restBox = nextC && c.afterText && c.after > 0 ? restCardHtml(c.afterText, 'before the next set') : '';
     if (s.cat === 'track') {
-      // Track: orange title, laps on the right, rest between laps in the card.
-      h += '<div class="wor-circ"><div class="mv" style="padding:0"><h4 style="margin:0">' + esc(c.label) + '</h4><span>' + many + '</span></div>' +
-        rests + '</div>' + restCard;
+      // Track: orange title with laps on the right; all rest lives in the card below.
+      h += '<div class="wor-circ"><div class="mv" style="padding:0"><h4 style="margin:0">' + esc(c.label) + '</h4><span>' + many + '</span></div>' + rests + '</div>' + restBox;
       return;
     }
     // Everything else: orange title on its own, the move underneath with how many
@@ -1097,12 +1098,9 @@ function paintStart() {
     var rows = one
       ? '<div class="mv"><b>' + esc(mv0.name) + '</b><span>' + (c.roundsText === '1' ? esc(mv0.reps) : many) + '</span></div>'
       : c.moves.map(function (m) { return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(m.reps) + '</span></div>'; }).join('');
-    var restLines = [];
-    if (c.betweenText) restLines.push(c.betweenText + ' between ' + plural(c.word, 2).toLowerCase());
-    if (nextC && c.afterText && c.after > 0) restLines.push(c.afterText + ' before the next set');
     h += '<div class="wor-circ"><div class="mv" style="padding:0;margin-bottom:6px"><h4 style="margin:0">' + esc(c.label) + '</h4>' +
-      (!one && c.roundsText !== '1' ? '<span>' + many + '</span>' : '') + '</div>' + rows + '</div>' +
-      (restLines.length ? '<div class="wor-restcard"><b>Rest</b><span>' + restLines.map(esc).join('<br>') + '</span></div>' : '');
+      (!one && c.roundsText !== '1' ? '<span>' + many + '</span>' : '') + '</div>' + rows + rests + '</div>' +
+      restBox;
   });
   if (s.cooldown.length) h += '<div class="wor-circ"><h4>Cool down</h4>' + s.cooldown.map(splitRow).join('') + '</div>';
   var notes = [['Key focus', s.keyFocus], ['Daily goal', s.dailyGoal], ['Coach note', s.coachNote]].filter(function (x) { return x[1]; });
@@ -1221,8 +1219,8 @@ function paintIntro() {
       // One move repeated: the right column is how many of them, not "1 run".
       var right = c.moves.length === 1 ? R.rounds + ' ' + plural(c.word, R.rounds).toLowerCase() : m.reps;
       return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(right) + '</span></div>';
-    }).join('') + '</div>' +
-    (c.between ? restCardHtml(c.betweenText, 'between ' + plural(c.word, 2).toLowerCase()) : '') +
+    }).join('') +
+    (c.between ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '</div>' : '') + '</div>' +
     '<button class="btn go" onclick="go(\'set\',{r:0,m:0})">Start ' + esc(c.label) + '</button></div>';
 }
 
