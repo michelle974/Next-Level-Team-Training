@@ -242,7 +242,11 @@ button{font-family:var(--sans);cursor:pointer;border:none;background:none;color:
 .wor-circ .mv{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:15.5px}
 .wor-circ .mv b{font-weight:700}
 .wor-circ .mv span{color:var(--ink-light);text-align:right;flex:none;max-width:50%}
-.wor-circ .rest{font-size:12.5px;color:var(--ink-light);margin-top:6px;border-top:1px dashed var(--line);padding-top:8px}
+.wor-circ .rest{font-size:15.5px;font-weight:700;color:var(--ink);margin-top:6px;border-top:1px dashed var(--line);padding-top:8px}
+.wor-restcard{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--orange-soft);border:1.5px solid #ffd2bd;border-radius:var(--r);padding:12px 16px}
+.wor-restcard b{font-family:var(--disp);font-weight:800;font-size:16px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange)}
+.wor-restcard span{font-weight:700;font-size:15.5px;color:var(--ink);text-align:right}
+.wor-aim .of{display:block;font-family:var(--sans);font-size:15px;font-weight:600;color:#bbb;margin-top:6px;text-transform:none}
 .wor-check{display:flex;align-items:center;gap:12px;padding:14px;border-radius:var(--r-sm);background:#fff;border:1.5px solid var(--line);font-size:16px;text-align:left;width:100%}
 .wor-check i{width:28px;height:28px;flex:none;border-radius:50%;border:2px solid var(--line-mid);display:grid;place-items:center;font-style:normal;font-weight:900;color:transparent}
 .wor-check.on{border-color:var(--black)}
@@ -1078,16 +1082,16 @@ function paintStart() {
   if (s.warmup.length) h += '<div class="wor-circ"><h4>Warm up</h4>' + s.warmup.map(splitRow).join('') + '</div>';
   list.forEach(function (c, i) {
     var nextC = list[i + 1];
-    var rests = (c.betweenText ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '</div>' : '') +
-      (nextC && c.afterText && c.after > 0 ? '<div class="rest" style="border-top:none;padding-top:2px;margin-top:0">Rest ' + esc(c.afterText) + ' before the next set</div>' : '');
+    var rests = c.betweenText ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '</div>' : '';
+    var restCard = nextC && c.afterText && c.after > 0 ? restCardHtml(c.afterText, 'before the next set') : '';
     if (s.cat === 'track') {
       // Track: the title says what to ride, the grey number says how many laps.
       h += '<div class="wor-circ"><div class="mv" style="padding:0"><h4 style="margin:0">' + esc(c.label) + '</h4><span>' +
-        esc(c.roundsText) + ' ' + esc(plural(c.word, c.hi).toLowerCase()) + '</span></div>' + rests + '</div>';
+        esc(c.roundsText) + ' ' + esc(plural(c.word, c.hi).toLowerCase()) + '</span></div>' + rests + '</div>' + restCard;
       return;
     }
     h += '<div class="wor-circ"><h4>' + esc(c.label) + (c.roundsText !== '1' ? ' &middot; ' + esc(c.roundsText) + ' ' + esc(plural(c.word, c.hi)) : '') + '</h4>' +
-      c.moves.map(function (m) { return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(m.reps) + '</span></div>'; }).join('') + rests + '</div>';
+      c.moves.map(function (m) { return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(m.reps) + '</span></div>'; }).join('') + rests + '</div>' + restCard;
   });
   if (s.cooldown.length) h += '<div class="wor-circ"><h4>Cool down</h4>' + s.cooldown.map(splitRow).join('') + '</div>';
   var notes = [['Key focus', s.keyFocus], ['Daily goal', s.dailyGoal], ['Coach note', s.coachNote]].filter(function (x) { return x[1]; });
@@ -1096,6 +1100,9 @@ function paintStart() {
   h += '<button class="btn go" onclick="begin()">' + (s.warmup.length ? 'Start warm-up' : 'Start') + '</button>' +
     '<div style="text-align:center"><button class="link quiet" onclick="openLog(\'' + esc(s.id) + '\')">Already did it? Log it without the timer</button></div></div>';
   return h;
+}
+function restCardHtml(time, what) {
+  return '<div class="wor-restcard"><b>Rest</b><span>' + esc(time) + ' ' + esc(what) + '</span></div>';
 }
 // "Free ride laps, easy pace (2-3 laps)" -> description left, "2-3 laps" in the grey column.
 function splitRow(w) {
@@ -1199,18 +1206,28 @@ function paintIntro() {
     '<div class="wor-scr"><div class="wor-name">' + esc(c.label) + '</div>' +
     '<div class="wor-pads"><div class="wor-pad"><div class="wor-pad-l">' + esc(plural(c.word, 2)) + (c.lo !== c.hi ? '<br><small style="font-family:var(--sans);letter-spacing:0;text-transform:none;font-weight:500;color:var(--ink-light)">Plan says ' + c.lo + '-' + c.hi + '</small>' : '') + '</div>' +
     '<div class="wor-row"><button class="wor-stp" onclick="R.rounds=Math.max(1,R.rounds-1);paint()">&minus;</button><div class="wor-num">' + R.rounds + '</div><button class="wor-stp" onclick="R.rounds=Math.min(30,R.rounds+1);paint()">+</button></div></div></div>' +
-    '<div class="wor-circ">' + c.moves.map(function (m) { return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(m.reps) + '</span></div>'; }).join('') +
-    (c.between ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '. The timer runs it for you.</div>' : '') + '</div>' +
+    '<div class="wor-circ">' + c.moves.map(function (m) {
+      // One move repeated: the right column is how many of them, not "1 run".
+      var right = c.moves.length === 1 ? R.rounds + ' ' + plural(c.word, R.rounds).toLowerCase() : m.reps;
+      return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(right) + '</span></div>';
+    }).join('') + '</div>' +
+    (c.between ? restCardHtml(c.betweenText, 'between ' + plural(c.word, 2).toLowerCase()) : '') +
     '<button class="btn go" onclick="go(\'set\',{r:0,m:0})">Start ' + esc(c.label) + '</button></div>';
 }
 
 function paintSet() {
   var c = circuits()[R.ci], mv = c.moves[R.m];
   if (!R.mt || R.mt.key !== R.ci + ':' + R.r + ':' + R.m) R.mt = { key: R.ci + ':' + R.r + ':' + R.m };
-  var h = topBar(c.label, c.word + ' ' + (R.r + 1) + ' of ' + R.rounds, cueDots(R.rounds, R.r)) +
+  var oneMove = c.moves.length === 1 && R.rounds > 1;   // the big box already says "Sprint 1 of 10"
+  var h = topBar(c.label, oneMove ? '' : c.word + ' ' + (R.r + 1) + ' of ' + R.rounds, cueDots(R.rounds, R.r)) +
     '<div class="wor-scr"><div><div class="wor-name">' + esc(mv.name) + '</div>' +
     (c.moves.length > 1 ? '<div class="wor-dots">' + c.moves.map(function (_, i) { return '<i class="' + (i < R.m ? 'done' : i === R.m ? 'now' : '') + '"></i>'; }).join('') + '<span>Move ' + (R.m + 1) + ' of ' + c.moves.length + '</span></div>' : '') + '</div>';
-  if (mv.reps) h += '<div class="wor-aim"><small>Aim for</small><b>' + esc(mv.reps) + '</b></div>';
+  var single = c.moves.length === 1 && R.rounds > 1;
+  if (single) {
+    // A sprint repeated: say which one this is. Keep the distance if it says one.
+    var extra = /^1\s+(run|lap|rep)s?$/i.test(String(mv.reps).trim()) ? '' : mv.reps;
+    h += '<div class="wor-aim"><b>' + esc(c.word + ' ' + (R.r + 1) + ' of ' + R.rounds) + '</b>' + (extra ? '<span class="of">' + esc(extra) + '</span>' : '') + '</div>';
+  } else if (mv.reps) h += '<div class="wor-aim"><small>Aim for</small><b>' + esc(mv.reps) + '</b></div>';
   if (mv.spec.timed) {
     var run = R.mt.running;
     var waitNow = run ? Math.ceil((R.mt.at - Date.now()) / 1000) : 0;
@@ -1220,7 +1237,9 @@ function paintSet() {
            : '<button class="btn orange" onclick="moveTimer()">' + (R.mt.done ? 'Again' + (mv.spec.perSide ? ', other side' : '') : 'Start timer') + '</button>') + '</div>';
   }
   if (mv.form) h += '<p class="wor-form">' + esc(mv.form) + '</p>';
-  h += '<button class="btn go" onclick="stopTimers();beepsStop();nextSet()">Done, next</button>' +
+  var endOfRound = R.m + 1 >= c.moves.length;
+  var restNext = endOfRound && ((R.r + 1 < R.rounds && c.between > 0) || (R.r + 1 >= R.rounds && c.after > 0 && R.ci + 1 < circuits().length));
+  h += '<button class="btn go" onclick="stopTimers();beepsStop();nextSet()">' + (restNext ? 'Start rest timer' : 'Done, next') + '</button>' +
     '<div class="wor-foot">' + (mv.video ? '<a class="wor-link" href="' + esc(mv.video) + '" target="_blank" rel="noopener">How to do it</a>' : '<span></span>') +
     '<button class="link quiet" onclick="stopTimers();beepsStop();nextSet(true)">Skip this move</button></div></div>';
   return h;
