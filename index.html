@@ -155,6 +155,10 @@ button{font-family:var(--sans);cursor:pointer;border:none;background:none;color:
 .hof-c span{display:block;margin-top:6px;font-size:13px;font-weight:700}
 .hof-c .f{color:var(--orange)} .hof-c .r{color:var(--green)}
 
+.lb-div{height:4px;border-radius:2px;background:var(--line-mid);margin:6px 0}
+.lb-div.fire{background:var(--orange)}
+.lb-div.rock{background:var(--green)}
+.lb-row:has(+ .lb-div){border-bottom:none}
 /* ── Login ────────────────────────────────── */
 #login{min-height:100vh;min-height:100dvh;background:var(--black) url('/img/header-accent.png') center 30px/100% auto no-repeat;color:#fff;padding:calc(var(--safe-t) + 26px) 0 calc(var(--safe-b) + 24px)}
 #login .logo{display:block;width:78%;max-width:340px;margin:0 auto 6px}
@@ -733,18 +737,26 @@ function viewBoard() {
   var practice = isPractice(mon);
   var h = '<div class="eyebrow">' + (practice ? 'Practice week' : 'Week of ' + shortDate(mon)) + '</div><div class="h1">Leaderboard</div>' +
     '<p class="muted" style="margin-top:6px">' + (practice ? 'Just for fun this week. The real board starts Monday, Oct 12. ' : '') +
-    'Resets every Monday. 3 sessions = On Fire. 5+ = Rockstar. Ties go to whoever got started first.</p>';
-  h += '<div class="card"><div class="lb">' + rows.map(function (x, i) {
-    var b = badgeFor(x.wk);
-    return '<div class="lb-row' + (x.r.gid === S.me.gid ? ' me' : '') + '"><div class="lb-rk">' + (i + 1) + '</div>' +
+    'Resets every Monday. 3 sessions = On Fire. 5+ = Rockstar.</p>';
+  // Most sessions first, A to Z within a tie. No rank numbers: riders with the
+  // same count are equal, and a colored divider marks where the count changes.
+  rows.sort(function (a, b) { return b.wk - a.wk || a.r.name.localeCompare(b.r.name); });
+  // A rider joins the board with their first logged session ever, and stays on it.
+  var board = rows.filter(function (x) { return counts(riderLogs(x.r)) > 0; });
+  var meHidden = !board.some(function (x) { return x.r.gid === S.me.gid; });
+  h += '<div class="card"><div class="lb">' + board.map(function (x, i) {
+    var b = badgeFor(x.wk), prev = board[i - 1];
+    var div = prev && prev.wk !== x.wk ? '<div class="lb-div ' + b + '"></div>' : '';
+    return div + '<div class="lb-row' + (x.r.gid === S.me.gid ? ' me' : '') + (prev && prev.wk !== x.wk ? ' first' : '') + '">' +
       '<div class="lb-nm">' + esc(x.r.name) + (b === 'rock' ? '<span class="lb-tag rock">&#9889; Rockstar</span>' : b === 'fire' ? '<span class="lb-tag fire">&#128293; On Fire</span>' : '') + '</div>' +
       '<div class="lb-n"><b>' + x.wk + '</b><span>' + (practice ? 'this week' : x.season + ' season') + '</span></div></div>';
-  }).join('') + '</div></div>';
+  }).join('') + (board.length ? '' : '<p class="muted" style="padding:10px 0">No sessions logged yet. Be the first on the board!</p>') + '</div>' +
+    (meHidden ? '<p class="muted" style="text-align:center;margin-top:12px">Log your first session to get on the board.</p>' : '') + '</div>';
   var hof = rows.filter(function (x) { return x.fires + x.rocks > 0; }).sort(function (a, b) { return (b.rocks * 2 + b.fires) - (a.rocks * 2 + a.fires) || a.r.name.localeCompare(b.r.name); });
   h += '<div class="card"><div class="card-hd"><div class="h2">Hall of Fame</div><span>Weeks earned this season</span></div>' +
     (hof.length ? '<div class="hof">' + hof.map(function (x) {
       return '<div class="hof-c"><b>' + esc(x.r.name) + '</b><span class="f">&#128293; ' + x.fires + ' On Fire</span><span class="r">&#9889; ' + x.rocks + ' Rockstar</span></div>';
-    }).join('') + '</div>' : '<p class="muted">' + (practice ? 'Opens Monday, Oct 12. ' : '') + 'First one to 3 sessions in a week gets on the wall.</p>') + '</div>';
+    }).join('') + '</div>' : '<p class="muted">' + (practice ? 'Opens Monday, Oct 12. ' : '') + 'Anyone with 3 sessions in a week makes the wall!</p>') + '</div>';
   return h;
 }
 
@@ -863,7 +875,7 @@ function closeRunner() {
 }
 
 // History, so ‹ goes back a screen the way a rider expects.
-function snapshot() { return JSON.stringify({ phase: R.phase, ci: R.ci, r: R.r, m: R.m, rounds: R.rounds, rest: R.rest, ivl: R.ivl }); }
+function snapshot() { return JSON.stringify({ phase: R.phase, ci: R.ci, r: R.r, m: R.m, rounds: R.rounds, rest: R.rest, ivl: R.ivl, restSec: R.restSec }); }
 function go(phase, patch) {
   stopTimers(); beepsStop(); P.on = false;
   R.hist.push(snapshot());
@@ -899,11 +911,11 @@ function enterCircuit(ci, chained) {
     go('ivlsetup', { ci: ci, ivl: ivl });
   } else if (R.s.cat === 'track') {
     // Track sets are one checklist screen: pick the laps, tick them off, move on.
-    go('laps', { ci: ci, rounds: c.hi, lapRest: null });
+    go('laps', { ci: ci, rounds: c.hi, lapRest: null, restSec: c.between });
   } else if (c.hi === 1) {
-    go('set', { ci: ci, rounds: 1, r: 0, m: 0 });   // one round: nothing to set up
+    go('set', { ci: ci, rounds: 1, r: 0, m: 0, restSec: c.between });   // one round: nothing to set up
   } else {
-    go('intro', { ci: ci, rounds: c.hi });
+    go('intro', { ci: ci, rounds: c.hi, restSec: c.between });
   }
 }
 function afterCircuit() {
@@ -917,7 +929,7 @@ function nextSet(skipped) {
   var c = circuits()[R.ci];
   if (R.m + 1 < c.moves.length) { go('set', { m: R.m + 1 }); return; }
   if (R.r + 1 < R.rounds) {
-    if (c.between > 0) startRest(c.between, { kind: 'set', r: R.r + 1 }, c.word + ' ' + (R.r + 2) + ' of ' + R.rounds + ': ' + c.moves[0].name);
+    if (restBetween(c) > 0) startRest(restBetween(c), { kind: 'set', r: R.r + 1 }, c.word + ' ' + (R.r + 2) + ' of ' + R.rounds + ': ' + c.moves[0].name);
     else go('set', { r: R.r + 1, m: 0 });
     return;
   }
@@ -1199,10 +1211,10 @@ function lapToggle(i) {
   var done = 0; for (var j = 0; j < total; j++) if (R.checks[lapKey(j)]) done++;
   stopTimers(); beepsStop();
   // Ticking a lap starts the rest before the next one, if the plan has one.
-  if (R.checks[k] && c.between > 0 && done < total) {
+  if (R.checks[k] && restBetween(c) > 0 && done < total) {
     P.on = false;
-    R.lapRest = { at: Date.now(), seconds: c.between };
-    scheduleBeeps([c.between]);
+    R.lapRest = { at: Date.now(), seconds: restBetween(c) };
+    scheduleBeeps([restBetween(c)]);
     lapLoop();
   } else {
     R.lapRest = null; P.on = false;
@@ -1216,6 +1228,15 @@ function lapLoop() {
     if (el) el.textContent = clock(n);
     if (n <= 0) { stopTimers(); buzz(); R.lapRest = null; paint(); }
   }, 250);
+}
+// The rest between laps or sprints, as the rider set it (the plan's number to start).
+function restBetween(c) { return R && R.restSec != null ? R.restSec : c.between; }
+function restAdj(d) { R.restSec = Math.max(0, Math.min(600, (R.restSec != null ? R.restSec : 0) + d)); paint(); }
+function restPad(c) {
+  var word = plural(c.word || 'Round', 2).toLowerCase();
+  return '<div class="wor-pads"><div class="wor-pad" style="border-color:#ffd2bd;background:var(--orange-soft)"><div class="wor-pad-l" style="color:var(--orange-dk)">Rest between ' + esc(word) +
+    '<br><small style="font-family:var(--sans);letter-spacing:0;text-transform:none;font-weight:500;color:var(--ink-light)">Plan says ' + esc(c.betweenText) + '</small></div>' +
+    '<div class="wor-row"><button class="wor-stp" onclick="restAdj(-15)">&minus;</button><div class="wor-num">' + clock(restBetween(c)) + '</div><button class="wor-stp" onclick="restAdj(15)">+</button></div></div></div>';
 }
 function lapRounds(d) {
   R.rounds = Math.max(1, Math.min(30, R.rounds + d));
@@ -1253,7 +1274,7 @@ function paintLaps() {
       '<div class="big" id="lr-n" style="color:var(--orange)">' + clock(left(R.lapRest.at, R.lapRest.seconds)) + '</div>' +
       '<div style="width:100%">' + pauseBtn() + '</div><button class="link quiet" onclick="stopTimers();beepsStop();P.on=false;R.lapRest=null;paint()">Skip rest</button></div>';
   } else if (c.betweenText) {
-    h += '<p class="muted" style="text-align:center">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(word, 2).toLowerCase()) + '. Tick a box and the rest timer starts.</p>';
+    h += restPad(c) + '<p class="muted" style="text-align:center">Tick a box and the rest timer starts.</p>';
   }
   h += '<button class="btn go" onclick="lapsDone()">' + esc(nextLabel()) + '</button></div>';
   return h;
@@ -1270,7 +1291,7 @@ function paintIntro() {
       var right = c.moves.length === 1 ? R.rounds + ' ' + plural(c.word, R.rounds).toLowerCase() : m.reps;
       return '<div class="mv"><b>' + esc(m.name) + '</b><span>' + esc(right) + '</span></div>';
     }).join('') +
-    (c.between ? '<div class="rest">Rest ' + esc(c.betweenText) + ' between ' + esc(plural(c.word, 2).toLowerCase()) + '</div>' : '') + '</div>' +
+    '</div>' + (c.between ? restPad(c) : '') +
     '<button class="btn go" onclick="go(\'set\',{r:0,m:0})">Start ' + esc(c.label) + '</button></div>';
 }
 
@@ -1297,7 +1318,7 @@ function paintSet() {
   }
   if (mv.form) h += '<p class="wor-form">' + esc(mv.form) + '</p>';
   var endOfRound = R.m + 1 >= c.moves.length;
-  var restNext = endOfRound && ((R.r + 1 < R.rounds && c.between > 0) || (R.r + 1 >= R.rounds && c.after > 0 && R.ci + 1 < circuits().length));
+  var restNext = endOfRound && ((R.r + 1 < R.rounds && restBetween(c) > 0) || (R.r + 1 >= R.rounds && c.after > 0 && R.ci + 1 < circuits().length));
   h += '<button class="btn go" onclick="stopTimers();beepsStop();nextSet()">' + (restNext ? 'Done, start rest timer' : 'Done, next') + '</button>' +
     '<div class="wor-foot">' + (mv.video ? '<a class="wor-link" href="' + esc(mv.video) + '" target="_blank" rel="noopener">How to do it</a>' : '<span></span>') +
     '<button class="link quiet" onclick="stopTimers();beepsStop();nextSet(true)">Skip this move</button></div></div>';
