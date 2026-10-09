@@ -887,12 +887,16 @@ function begin() {
   awake(true); audioStart(); silentStart();
   if (R.s.warmup.length) go('prep'); else enterCircuit(0);
 }
-function enterCircuit(ci) {
+function enterCircuit(ci, chained) {
   var list = circuits();
   if (ci >= list.length) { if (R.s.cooldown.length) go('cool', { ci: ci }); else finish(); return; }
   var c = list[ci];
   if (c.timed) {
-    go('ivlsetup', { ci: ci, ivl: { rounds: c.hi, legs: c.moves.map(function (m) { return { name: m.name, seconds: m.spec.seconds }; }), between: c.between } });
+    var ivl = { rounds: c.hi, legs: c.moves.map(function (m) { return { name: m.name, seconds: m.spec.seconds }; }), between: c.between };
+    // A timed block straight after another (roller intervals, then recovery,
+    // then tempo) carries on without stopping: no set-up screen, no countdown.
+    if (chained) { R.ci = ci; R.ivl = ivl; ivlGo(true); return; }
+    go('ivlsetup', { ci: ci, ivl: ivl });
   } else if (R.s.cat === 'track') {
     // Track sets are one checklist screen: pick the laps, tick them off, move on.
     go('laps', { ci: ci, rounds: c.hi, lapRest: null });
@@ -904,6 +908,7 @@ function enterCircuit(ci) {
 }
 function afterCircuit() {
   var list = circuits(), c = list[R.ci];
+  if (c.timed && list[R.ci + 1] && list[R.ci + 1].timed && !(c.after > 0)) { enterCircuit(R.ci + 1, true); return; }
   if (R.ci + 1 < list.length && c.after > 0) startRest(c.after, { kind: 'circuit', ci: R.ci + 1 }, 'Next up: ' + list[R.ci + 1].label);
   else enterCircuit(R.ci + 1);
 }
@@ -1021,12 +1026,12 @@ function ivlAdj(i, d) {
 }
 function stepFor(sec) { return sec >= 60 ? 15 : 5; }
 var LEAD_IN = 5;   // seconds of "get ready" before the first leg of a timed block
-function ivlGo() {
+function ivlGo(chained) {
   R.plan = ivlPlan(); if (!R.plan.length) return;
-  R.plan.unshift({ name: R.plan[0].name, seconds: LEAD_IN, round: 0, lead: true });
+  if (!chained) R.plan.unshift({ name: R.plan[0].name, seconds: LEAD_IN, round: 0, lead: true });
   go('ivlrun', { pi: 0, legAt: Date.now() });
   awake(true);
-  scheduleBeeps(R.plan.map(function (p) { return p.seconds; }), true);
+  scheduleBeeps(R.plan.map(function (p) { return p.seconds; }), !chained);
   T.id = setInterval(ivlTick, 250);
 }
 function ivlTick() {
@@ -1328,6 +1333,8 @@ function paintIvlSetup() {
 function paintIvl() {
   var c = circuits()[R.ci], step = R.plan[R.pi], next = R.plan[R.pi + 1];
   var rounds = R.ivl.rounds;
+  var nc = circuits()[R.ci + 1];
+  if (!next && nc && nc.timed && !(c.after > 0)) next = { name: nc.moves[0].name, seconds: nc.moves[0].spec.seconds };
   if (step.lead) {
     $('runner').innerHTML = topBar(c.label, 'Get ready', cueDots(rounds, -1)) +
       '<div class="wor-run full lead"><div class="lab">Start your first ' + esc(step.name) + ' in</div>' +
